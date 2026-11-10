@@ -2,6 +2,10 @@ import re
 import argparse
 import json
 import sys
+from pathlib import Path
+
+#la carpeta actual
+BASE_DIR = Path(__file__).resolve().parent
 
 ISO_4217 = {
     'USD': 'USD',
@@ -52,7 +56,7 @@ PUNTO_COMA = r"(\.|,)"
 MONTO = DIGITOS + r"+" + r"(" + PUNTO_COMA + DIGITOS + r"+)*"
 
 MONEDA = r"(USD|U\$S|U\$|US\$|DÓLARES|DOLARES|ARS|\$|PESOS ARGENTINOS|PESOS URUGUAYOS|PESOS CHILENOS|PESOS|UYU|CLP|BRL|R\$|REALES|EUR|EUROS)"
-ISO_4217 = r"(USD|ARS|UYU|CLP|BRL|EUR)"
+ISO_4217 = r"(USD|ARS|UYU|CLP|BRL|EUR)" #se sobreescribe el diccionario? tienen mismo nombre
 SIMBOLO = r"(\$|U\$S|U\$|US\$|R\$)"
 COLOQUIAL = r"(DÓLARES|DOLARES|PESOS ARGENTINOS|PESOS URUGUAYOS|PESOS CHILENOS|PESOS|REALES|EUROS|pesos|dólares|reales|euros|pesos argentinos|pesos uruguayos|pesos chilenos|dolares|reales)"
 MULTIPLICADOR = r"(MILLONES|MILLÓN|MILLON|MIL|M)"
@@ -99,7 +103,7 @@ def leer_archivo(ruta):
 
 def extraer_texto(ruta= None):
     if ruta is None:
-        ruta = '/home/joaquin/Documentos/facultad/FTI/tp_final/data.txt'
+        ruta = BASE_DIR / "data.txt"
     bloques_validos = []
     content = leer_archivo(ruta)
     bloques = re.split(DIVIDIR_TXT, content)
@@ -183,7 +187,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--ruta", 
         type=str, 
-        default="/home/joaquin/Documentos/facultad/FTI/tp_final/data.txt",
+        default= BASE_DIR / "data.txt",
         help="Ruta del archivo de texto a procesar (opcional)."
     )
     
