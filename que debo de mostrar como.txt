@@ -1,0 +1,48 @@
+que debo de mostrar como salida?
+de momento tenemos guardado en un json
+-texto original
+- monto original
+- moneda original
+- modificador // puede no estar
+	-tipo
+	-porcentaje
+	- monto final (esta mal de momento)
+- conversion // puede no estar
+
+
+que realizo con enunciados que tienen aumentos o decrementos
+ej:el fondo de comercio aumento su valor a 9000 pesos argentinos lo cual representa un aumento del 9% frente a meses anteriores cuando encuentro un descuento que ya esta aplicado al precio que se muesra no hago nada nomas normalizo los precios 
+
+es distinto a: la computadora que esta a 1000000 ahora tiene 15% de descuento
+
+
+-para el primero: calculo el monto antes del aumento? y muestro el monto antes y despues del aumento o decremento??
+
+- para el segundo calculo el precio con descuento? y muestro antes 
+
+
+# Rebajas IMOLA
+Fiat UNO año 2014 $ 6.000.000 con 15 % de descuento.
+Fiat Argo año 2019 $ 16.000.000 con 10 % de descuento.
+
+Se espera (decisión de diseño):
+
+# Rebajas IMOLA
+Fiat UNO año 2014 $ 6.000.000 con 15 % de descuento. Precio Final: xxxx
+Fiat Argo año 2019 $ 16.000.000 con 10 % de descuento. Precio Final: xxxx
+
+
+
+
+
+el objetivo del programa es volver a mostrar la entrada completa pero con los precios normalizados o convertidos
+tal que: 
+Fiat UNO año 2014 6 millones de pesos argentinos con 15 % de descuento. Precio Final: xxxx
+mostraria:
+Fiat UNO año 2014 $6.000.000 de pesos argentinos con 15 % de descuento. Precio Final: xxxx
+
+
+la bandera --a es la moneda en la que expresar los montos de las noticias osea que si hay --a ARS
+normalizar los precios todos a ARS. si son euros,dolar,paraguayos cualquier cosa que no sea pesos argentinos pasarlos a pesos argentinos
+
+se puede armar un front con un cuadro de texto y un boton y despues osltar el output por txt o pdf incluso o pantalla nomas. puede ser por una pantalla cli

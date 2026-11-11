@@ -194,11 +194,7 @@ ESTRUCTURAS_DINERO = (
 # si existe una cotizacion manual ingresada por parametro utiliza esa
 # si no intenta conectarse a la api
 # si la api no funciona uso el archivo local
-def obtener_cotizacion(moneda, cotizacion_manual=None):
-    
-    # si hay cotizacion por argumento uso esa 
-    if cotizacion_manual is not None:
-        return float(cotizacion_manual)
+def obtener_cotizacion(moneda):
     
     # consultar a la api
     url = "https://dolarapi.com/v1/cotizaciones"
@@ -222,7 +218,7 @@ def obtener_cotizacion(moneda, cotizacion_manual=None):
                 if c.get("moneda") == moneda:
                     return float(c.get("venta", 1200))
 
-    return 1200.0 # habria que dar un error en realidad
+    return None
 
 
 def leer_archivo(ruta):
@@ -376,12 +372,7 @@ def procesar_monto_completo(texto_monto, texto_bloque, moneda_destino=None, coti
     #realizar conversion si se especifico
     conversion = None
     if moneda_destino:
-        # La moneda extranjera cuya cotización necesitamos buscar contra el peso:
-        moneda_a_cotizar = moneda_origen if moneda_destino == "ARS" else moneda_destino
-        cotizacion_valor = obtener_cotizacion(moneda_a_cotizar, cotizacion)
-        #cotizacion_valor = obtener_cotizacion(moneda_destino, cotizacion)
-        conversion = convertir_moneda(monto_a_convertir, moneda, moneda_destino, cotizacion_valor)
-
+        conversion = convertir_moneda(monto_a_convertir, moneda, moneda_destino, cotizacion)
     return {
         "texto_original": texto_monto,
         "monto_original": monto_num,
@@ -390,28 +381,38 @@ def procesar_monto_completo(texto_monto, texto_bloque, moneda_destino=None, coti
         "conversion": conversion
     }
 
-def convertir_moneda(monto, moneda_origen, moneda_destino, cotizacion_usd):
+
+def convertir_moneda(monto, moneda_origen, moneda_destino, cotizacion_manual=None):
+    # SI NO SE PIDIO QUE SE CONVIERTA O LAS MONEDAS SON IGUALES, NO HAGO NADA
     if not moneda_destino or moneda_origen == moneda_destino:
         return None
 
-    # Si la moneda origen es ARS y el destino es USD
-    if moneda_origen == "ARS" and moneda_destino == "USD":
-        monto_convertido = monto / cotizacion_usd
-    # Si la moneda origen es USD y el destino es ARS
-    elif moneda_origen == "USD" and moneda_destino == "ARS":
-        monto_convertido = monto * cotizacion_usd
+    
+    # 1. PESO A PESO ES 1
+    if moneda_origen == "ARS":
+        tasa_origen = 1.0
+    elif cotizacion_manual and moneda_destino == "ARS":
+        # SI QUIERE PASAR A PESOS ARGENTINOS Y PASO LA COTIZACION SE USA ESA
+        tasa_origen = cotizacion_manual
     else:
-        # Si son otras monedas (UYU, CLP, BRL) sin tabla cruzada, avisamos
-        return {
-            "error": f"Conversión directa de {moneda_origen} a {moneda_destino} no disponible"
-        }
+        tasa_origen = obtener_cotizacion(moneda_origen) #SINO SE OBTIENE YA SEA DE LA API O LO QUE SEA
 
+
+    #OBTERNER LA TAZA DE LA MONEDA DESTINO
+    if moneda_destino == "ARS":
+        tasa_destino = 1.0
+    elif cotizacion_manual and moneda_destino != "ARS":
+        tasa_destino = cotizacion_manual
+    else:
+        tasa_destino = obtener_cotizacion(moneda_destino)
+    if not tasa_origen or not tasa_destino:
+        return {"error": f"No se pudo cotizar {moneda_origen} a {moneda_destino}"}
+    monto_en_pesos = monto * tasa_origen
+    monto_final = monto_en_pesos / tasa_destino
     return {
         "moneda_destino": moneda_destino,
-        "cotizacion_usada": cotizacion_usd,
-        "monto_convertido": round(monto_convertido, 2)
+        "monto_convertido": round(monto_final, 2)
     }
-
 
 
 if __name__ == "__main__":
@@ -424,7 +425,7 @@ if __name__ == "__main__":
         default= BASE_DIR / "data.txt",
         help="Ruta del archivo de texto a procesar (opcional)."
     )
-    parser.add_argument("--a", type=str, choices=["ARS", "USD"], help="Moneda a convertir")
+    parser.add_argument("--a", type=str, choices=list(MONEDAS_ISO.keys()), help="Moneda a convertir")
     parser.add_argument("--cotizacion", type=float, help="Cotización manual")
     
     args = parser.parse_args()
