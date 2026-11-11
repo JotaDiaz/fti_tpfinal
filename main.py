@@ -138,7 +138,7 @@ COLOQUIAL = r"(" + "|".join(patrones_coloquial) + r")"
 
 ####
 patrones_mult = [re.escape(m) for m in sorted(MULTIPLICADORES.keys(), key=len, reverse=True)]
-MULTIPLICADOR = r"(" + "|".join(patrones_mult) + r")"
+MULTIPLICADOR = r"\b(" + "|".join(patrones_mult) + r")\b"
 #MULTIPLICADOR = r"(MILLONES|MILLÓN|MILLON|MIL|M)"
 
 
@@ -151,6 +151,11 @@ NUMERO_PORCENTAJE = DIGITOS + r"+(" + PUNTO_COMA + DIGITOS + r"+)?"
 ER_PORCENTAJE = r"(" + NUMERO_PORCENTAJE + ESPACIOS + SIGNO_PORCENTAJE + r")"
 
 
+
+
+# ==============================================================================
+# ESTRUCTURAS REGULARES A UTILIZAR
+# ==============================================================================
 
 # Estructura ISO + MONTO "USD 1000"
 ESTRUCTURA_ISO = r"(" + ISO_4217 + ESPACIOS + MONTO + r")"
@@ -183,8 +188,12 @@ ESTRUCTURAS_DINERO = (
     r")"
 )
 
-import requests
 
+
+
+# si existe una cotizacion manual ingresada por parametro utiliza esa
+# si no intenta conectarse a la api
+# si la api no funciona uso el archivo local
 def obtener_cotizacion(moneda, cotizacion_manual=None):
     
     # si hay cotizacion por argumento uso esa 
@@ -213,7 +222,7 @@ def obtener_cotizacion(moneda, cotizacion_manual=None):
                 if c.get("moneda") == moneda:
                     return float(c.get("venta", 1200))
 
-    return 1200.0
+    return 1200.0 # habria que dar un error en realidad
 
 
 def leer_archivo(ruta):
@@ -367,7 +376,10 @@ def procesar_monto_completo(texto_monto, texto_bloque, moneda_destino=None, coti
     #realizar conversion si se especifico
     conversion = None
     if moneda_destino:
-        cotizacion_valor = obtener_cotizacion(moneda_destino, cotizacion)
+        # La moneda extranjera cuya cotización necesitamos buscar contra el peso:
+        moneda_a_cotizar = moneda_origen if moneda_destino == "ARS" else moneda_destino
+        cotizacion_valor = obtener_cotizacion(moneda_a_cotizar, cotizacion)
+        #cotizacion_valor = obtener_cotizacion(moneda_destino, cotizacion)
         conversion = convertir_moneda(monto_a_convertir, moneda, moneda_destino, cotizacion_valor)
 
     return {
@@ -412,6 +424,8 @@ if __name__ == "__main__":
         default= BASE_DIR / "data.txt",
         help="Ruta del archivo de texto a procesar (opcional)."
     )
+    parser.add_argument("--a", type=str, choices=["ARS", "USD"], help="Moneda a convertir")
+    parser.add_argument("--cotizacion", type=float, help="Cotización manual")
     
     args = parser.parse_args()
 
@@ -423,7 +437,7 @@ if __name__ == "__main__":
             print(monto)
             monto_str = monto.group(0).strip()
             print(f"Procesando monto: {monto_str}")
-            monto_resuelto = procesar_monto_completo(monto_str, bloque)
+            monto_resuelto = procesar_monto_completo(monto_str, bloque, moneda_destino=args.a, cotizacion=args.cotizacion)
             montos_bloque.append(monto_resuelto)
         montos.append(montos_bloque)
 
