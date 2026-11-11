@@ -1,0 +1,60 @@
+#######################################################################
+En el cierre de operaciones, el dólar estadounidense cotizó en promedio a 977,73 pesos chilenos, lo que representa una disminución de 0,09% respecto al precio de cierre anterior de 978,59 pesos chilenos. Dow Jones
+
+    [
+        {
+            "texto_original": "977,73 PESOS CHILENOS",
+            "monto_original": 977.73,
+            "moneda_original": "CLP",
+            "modificador": {
+                "tipo": "descuento",
+                "porcentaje": 0.09,
+                "monto_final": 976.85
+            },
+            "conversion": null
+        },
+        
+###################################################
+
+########################################################################
+## El grueso de la recaudación provino de los 22 recintos autorizados bajo el amparo de la Ley 19.995, cuya facturación conjunta se situó en CLP 373.596.808.675 (USD 412.525.968). Esta cifra supone un avance interanual del 7,9 %.
+
+        {
+            "texto_original": "USD 412.525.968",
+            "monto_original": 412525968.0,
+            "moneda_original": "USD",
+            "modificador": {
+                "tipo": "aumento",
+                "porcentaje": 7.9,
+                "monto_final": 445115519.47
+            },
+            "conversion": null
+        }
+    ],
+    
+#################################################
+## El grueso de la recaudación provino de los 22 recintos autorizados bajo el amparo de la Ley 19.995, cuya facturación conjunta se situó en CLP 373.596.808.675 (USD 412.525.968). Esta cifra supone un avance interanual del 7,9 %.
+
+                {
+            "texto_original": "CLP 373.596.808.675",
+            "monto_original": 373596808675.0,
+            "moneda_original": "CLP",
+            "modificador": {
+                "tipo": "aumento",
+                "porcentaje": 7.9,
+                "monto_final": 403110956560.33
+            },
+            "conversion": null
+        },
+        
+        {
+            "texto_original": "CLP 373.596.808.675",
+            "monto_original": 373596808675.0,
+            "moneda_original": "CLP",
+            "modificador": {
+                "tipo": "aumento",
+                "porcentaje": 7.9,
+                "monto_final": 403110956560.33
+            },
+            "conversion": null
+        },
