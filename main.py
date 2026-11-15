@@ -86,65 +86,18 @@ FACTOR_POR_MULTIPLICADOR = {
     'B': 1000000000
 }
 
-# Símbolos que pueden anteceder a un monto.
-# Ejemplo: '$', 'U$S', 'R$', '€'.
-SIMBOLOS_MONETARIOS = ['$', 'U$S', 'U$D', 'US$', 'U$', '$U', 'AR$', '$AR', 'CLP$', 'R$', '€']
+# Abreviaturas que multiplican un monto y que solo se aceptan junto a una
+# moneda explícita (símbolo o código ISO). Ejemplos: "$1,2 M", "USD 5 K".
+ABREVIATURAS_DE_MULTIPLICADOR = ['M', 'K', 'B']
 
-# Nombres de moneda escritos con palabras.
-# Ejemplo: 'pesos argentinos', 'dólares', 'reales'.
-NOMBRES_COLOQUIALES_DE_MONEDA = [
-    'PESOS ARGENTINOS', 'PESO ARGENTINO',
-    'PESOS URUGUAYOS', 'PESO URUGUAYO',
-    'PESOS CHILENOS', 'PESO CHILENO',
-    'PESOS', 'PESO',
-    'DÓLARES', 'DOLARES', 'DÓLAR', 'DOLAR',
-    'REALES', 'REAL',
-    'EUROS', 'EURO'
-]
-
-
-# ==============================================================================
-# UTILIDADES PARA CONSTRUIR LAS EXPRESIONES REGULARES
-# ==============================================================================
-
-def ordenar_por_longitud(valores):
-    """
-    Devuelve una lista nueva con los valores ordenados de mayor a menor longitud.
-    Ejemplo: ['MIL', 'MILLONES'] -> ['MILLONES', 'MIL'].
-    """
-    valores_ordenados = sorted(valores, key=len, reverse=True)
-    return valores_ordenados
-
-
-def escapar_patrones(valores):
-    """
-    Ordena y escapa cada valor para usarlo como alternativa dentro de una ER.
-    Ejemplo: ['$', 'U$S'] -> ['U\\$S', '\\$'].
-    """
-    patrones = []
-    for valor in ordenar_por_longitud(valores):
-        patrones.append(re.escape(valor))
-    return patrones
-
-
-def unir_alternativas(patrones):
-    """
-    Une los patrones con el operador de unión y los encierra entre paréntesis.
-    Ejemplo: ['USD', 'ARS'] -> '(USD|ARS)'.
-    """
-    return "(" + "|".join(patrones) + ")"
-
-
-def palabras_multiplicadoras():
-    """
-    Devuelve solo las palabras que multiplican un monto, sin las abreviaturas.
-    Ejemplo: ['MIL', 'M', 'MILLONES', 'K'] -> ['MIL', 'MILLONES'].
-    """
-    palabras = []
-    for palabra in FACTOR_POR_MULTIPLICADOR.keys():
-        if palabra not in ABREVIATURAS_DE_MULTIPLICADOR:
-            palabras.append(palabra)
-    return palabras
+# Listas ya ordenadas de mayor a menor longitud para que el reconocimiento
+# pruebe primero lo más largo ("MIL MILLONES" antes que "MIL",
+# "PESOS ARGENTINOS" antes que "PESOS", "U$S" antes que "$").
+MULTIPLICADORES_EN_PALABRAS = sorted(
+    [k for k in FACTOR_POR_MULTIPLICADOR if k not in ABREVIATURAS_DE_MULTIPLICADOR],
+    key=len, reverse=True
+)
+MONEDAS_POR_LONGITUD = sorted(MONEDA_POR_SIMBOLO_O_NOMBRE.keys(), key=len, reverse=True)
 
 
 # ==============================================================================
@@ -190,40 +143,24 @@ DELIMITADOR_FINAL = r"( |\n|\t|\r|\.|,|;|:|\)|\]|\"|%|!|\?|-|/)"
 
 # --- Multiplicadores ----------------------------------------------------------
 
-# Abreviaturas que multiplican un monto y que solo se aceptan junto a una
-# moneda explícita (símbolo o código ISO). Ejemplos: "$1,2 M", "USD 5 K".
-ABREVIATURAS_DE_MULTIPLICADOR = ['M', 'K', 'B']
-
-# Palabras que multiplican un monto. Se ordenan de mayor a menor longitud para
-# que "MIL MILLONES" se pruebe antes que "MIL".
+# Palabras que multiplican un monto. Hoja cruda, lo largo va antes que "MIL".
 # Ejemplos: "2,5 millones", "160 mil", "3 mil millones".
-PATRONES_DE_MULTIPLICADORES_EN_PALABRAS = escapar_patrones(palabras_multiplicadoras())
-MULTIPLICADOR_EN_PALABRAS = unir_alternativas(PATRONES_DE_MULTIPLICADORES_EN_PALABRAS)
+MULTIPLICADOR_EN_PALABRAS = r"(MIL MILLONES|MIL MILLÓN|MIL MILLON|MILLONES|BILLONES|MILLON|MILLÓN|BILLON|BILLÓN|MIL)"
 
-# Abreviaturas de multiplicador. Ejemplo: "M" en "$1,2 M" o "K" en "USD 5 K".
-PATRONES_DE_MULTIPLICADORES_ABREVIADOS = escapar_patrones(ABREVIATURAS_DE_MULTIPLICADOR)
-MULTIPLICADOR_ABREVIADO = unir_alternativas(PATRONES_DE_MULTIPLICADORES_ABREVIADOS)
+# Abreviaturas de multiplicador. Hoja cruda. Ejemplo: "M" en "$1,2 M" o "K" en "USD 5 K".
+MULTIPLICADOR_ABREVIADO = r"(M|K|B)"
 
 
 # --- Monedas ------------------------------------------------------------------
 
-# Códigos ISO 4217 soportados. Ejemplos: "USD", "ARS", "CLP".
-# Se ordenan de mayor a menor longitud para que un código no se confunda con otro.
-PATRONES_DE_CODIGOS_ISO = escapar_patrones(CODIGOS_ISO_4217_SOPORTADOS.keys())
-CODIGO_DE_MONEDA_ISO = unir_alternativas(PATRONES_DE_CODIGOS_ISO)
+# Códigos ISO 4217 soportados.
+CODIGO_DE_MONEDA_ISO = r"(USD|ARS|UYU|CLP|BRL|EUR)"
 
-# Símbolos monetarios. Se ordenan de mayor a menor longitud para que "U$S"
-# no se confunda con "$". Ejemplos: "$", "u$s", "R$", "€".
-PATRONES_DE_SIMBOLOS = escapar_patrones(SIMBOLOS_MONETARIOS)
-SIMBOLO_DE_MONEDA = unir_alternativas(PATRONES_DE_SIMBOLOS)
+# Símbolos monetarios.
+SIMBOLO_DE_MONEDA = r"(CLP\$|U\$S|U\$D|US\$|AR\$|\$AR|U\$|\$U|R\$|\$|€)"
 
-# Nombres de moneda escritos con palabras. Se ordenan de mayor a menor longitud
-# para que "PESOS ARGENTINOS" se pruebe antes que "PESOS".
-# Ejemplos: "pesos argentinos", "dólares", "reales".
-PATRONES_DE_NOMBRES_COLOQUIALES = escapar_patrones(NOMBRES_COLOQUIALES_DE_MONEDA)
-NOMBRE_DE_MONEDA_COLOQUIAL = unir_alternativas(PATRONES_DE_NOMBRES_COLOQUIALES)
+NOMBRE_DE_MONEDA_COLOQUIAL = r"(PESOS ARGENTINOS|PESOS URUGUAYOS|PESO ARGENTINO|PESOS CHILENOS|PESO URUGUAYO|PESO CHILENO|DÓLARES|DOLARES|REALES|PESOS|DÓLAR|DOLAR|EUROS|PESO|REAL|EURO)"
 
-# "DE " opcional entre el multiplicador y el nombre de la moneda.
 # Ejemplos: "millones DE dólares", "mil pesos".
 CONECTOR_DE = r"(DE" + ESPACIOS_OPCIONALES + r"|)"
 
@@ -291,7 +228,6 @@ MONTO_CON_MULTIPLICADOR_Y_NOMBRE_DE_MONEDA = (
 MONTO_CON_CODIGO_ISO_ANTEPUESTO = (r"(" + CODIGO_DE_MONEDA_ISO + ESPACIOS_OPCIONALES + MONTO_NUMERICO + r")")
 
 # Monto con código ISO pospuesto. Ejemplo: "95 USD".
-# Nota: "2014 USD" también matchea; es una ambigüedad propia del formato.
 MONTO_CON_CODIGO_ISO_POSPUESTO = (
     r"(" + MONTO_NUMERICO + ESPACIOS_OPCIONALES + CODIGO_DE_MONEDA_ISO + r")"
 )
@@ -313,8 +249,6 @@ MONTO_CON_MULTIPLICADOR = (
     r"(" + MONTO_NUMERICO + ESPACIOS_OPCIONALES + MULTIPLICADOR_EN_PALABRAS + r")"
 )
 
-# Alternativa completa. El grupo 1 es el monto que se normaliza; el
-# DELIMITADOR_FINAL queda fuera para no borrar espacios ni puntuación.
 # Ejemplos: "$ 1.150", "u$s 4.500", "2,5 millones de dólares", "$1,2 M".
 EXPRESION_DE_MONTO = (
     r"(" +
@@ -333,8 +267,7 @@ EXPRESION_DE_MONTO = (
     r")" + DELIMITADOR_FINAL
 )
 
-# Promoción con el porcentaje antes de la palabra clave.
-# Distingue promociones activas ("con 15 % de descuento") de variaciones
+
 # estadísticas ya aplicadas ("subió 7,4 %").
 PROMOCION_APLICABLE = (
     r"(" +
@@ -360,9 +293,9 @@ PROMOCION_APLICABLE_POSPUESTA = (
 )
 
 
-# ==============================================================================
+# 
 # OBTENCIÓN DE COTIZACIONES Y CONVERSIÓN DE MONEDAS
-# ==============================================================================
+
 
 def obtener_cotizacion(moneda, cotizacion_manual=None):
     """
@@ -370,38 +303,38 @@ def obtener_cotizacion(moneda, cotizacion_manual=None):
     Si se pasó cotización manual por argumento, la utiliza.
     Si no, consulta la API oficial (dolarapi.com) o usa el archivo local cotizaciones.json.
     """
-    if moneda == "ARS":
+    if moneda == "ARS":  # ARS vale 1
         return 1.0
 
     # Si hay cotización manual ingresada por argumento la usamos
-    if cotizacion_manual is not None:
+    if cotizacion_manual is not None:  # manual tiene prioridad
         return float(cotizacion_manual)
-    
+
     # Intento de consulta en línea a la API pública
-    url = "https://dolarapi.com/v1/cotizaciones"
+    url = "https://dolarapi.com/v1/cotizaciones"  # API online
     try:
         respuesta = requests.get(url, timeout=1)
         if respuesta.status_code == 200:
             datos = respuesta.json()
-            for c in datos:
+            for c in datos:  # busca la moneda pedida
                 if c.get("moneda") == moneda:
                     return float(c.get("venta", c.get("compra", 1200)))
     except Exception:
         pass  # Si no hay conexión o falla la API, pasamos al archivo local
 
     # Modo sin conexión: lectura de cotizaciones.json guardado en el proyecto
-    ruta_cotizaciones = CARPETA_BASE_DEL_PROGRAMA / "cotizaciones.json"
+    ruta_cotizaciones = CARPETA_BASE_DEL_PROGRAMA / "cotizaciones.json"  # plan B offline
     if ruta_cotizaciones.exists():
         try:
             with open(ruta_cotizaciones, 'r', encoding='utf-8') as f:
                 lista_cotizaciones = json.load(f)
-                for c in lista_cotizaciones:
+                for c in lista_cotizaciones:  # busca la moneda en el archivo
                     if c.get("moneda") == moneda:
                         return float(c.get("venta", 1200))
         except Exception:
             pass
 
-    return None
+    return None  # sin cotización
 
 
 def convertir_moneda(monto, moneda_origen, moneda_destino, cotizacion_manual=None):
@@ -409,31 +342,31 @@ def convertir_moneda(monto, moneda_origen, moneda_destino, cotizacion_manual=Non
     Convierte un monto entre cualquier par de monedas triangulando con ARS como base.
     Soporta cotización manual tanto si la moneda extranjera es origen como destino.
     """
-    if not moneda_destino or moneda_origen == moneda_destino:
+    if not moneda_destino or moneda_origen == moneda_destino:  # nada que convertir
         return None
 
     # 1. Tasa de la moneda de origen respecto a ARS
-    if moneda_origen == "ARS":
+    if moneda_origen == "ARS":  # origen en pesos
         tasa_origen = 1.0
-    elif cotizacion_manual and moneda_destino == "ARS":
+    elif cotizacion_manual and moneda_destino == "ARS":  # manual si va a ARS
         tasa_origen = float(cotizacion_manual)
-    else:
+    else:  # busca cotización origen
         tasa_origen = obtener_cotizacion(moneda_origen, cotizacion_manual if moneda_origen != "ARS" else None)
 
     # 2. Tasa de la moneda de destino respecto a ARS
-    if moneda_destino == "ARS":
+    if moneda_destino == "ARS":  # destino en pesos
         tasa_destino = 1.0
-    elif cotizacion_manual and moneda_destino != "ARS":
+    elif cotizacion_manual and moneda_destino != "ARS":  # manual si sale de ARS
         tasa_destino = float(cotizacion_manual)
-    else:
+    else:  # busca cotización destino
         tasa_destino = obtener_cotizacion(moneda_destino)
 
-    if not tasa_origen or not tasa_destino:
+    if not tasa_origen or not tasa_destino:  # sin tasa no convierte
         return {"error": f"No se pudo cotizar {moneda_origen} a {moneda_destino}"}
 
     # Conversión universal pasando por ARS:
-    monto_en_pesos = monto * tasa_origen
-    monto_final = monto_en_pesos / tasa_destino
+    monto_en_pesos = monto * tasa_origen  # pasa a ARS
+    monto_final = monto_en_pesos / tasa_destino  # pasa a destino
 
     return {
         "moneda_destino": moneda_destino,
@@ -450,14 +383,14 @@ def es_parte_entera_valida(parte_entera, separador_de_miles):
     Verifica que la parte entera use grupos de miles bien formados.
     Ejemplo: '1.234' con separador '.' -> True; '12.34' -> False.
     """
-    grupos = parte_entera.split(separador_de_miles)
+    grupos = parte_entera.split(separador_de_miles)  # corta por el separador
 
-    if not grupos[0].isdigit():
+    if not grupos[0].isdigit():  # primer grupo debe ser número
         return False
-    if len(grupos[0]) < 1 or len(grupos[0]) > 3:
+    if len(grupos[0]) < 1 or len(grupos[0]) > 3:  # 1 a 3 dígitos al inicio
         return False
 
-    for grupo in grupos[1:]:
+    for grupo in grupos[1:]:  # el resto debe ser de a 3 dígitos
         if not grupo.isdigit():
             return False
         if len(grupo) != 3:
@@ -471,8 +404,8 @@ def convertir_partes_a_numero(parte_entera, parte_decimal, separador_de_miles):
     Convierte dos partes ya validadas a un número decimal.
     Ejemplo: ('1.234', '56', '.') -> 1234.56.
     """
-    entero_sin_miles = parte_entera.replace(separador_de_miles, "")
-    return float(entero_sin_miles + "." + parte_decimal)
+    entero_sin_miles = parte_entera.replace(separador_de_miles, "")  # saca miles
+    return float(entero_sin_miles + "." + parte_decimal)  # une como decimal
 
 
 def interpretar_monto_con_dos_separadores(monto_str):
@@ -480,10 +413,10 @@ def interpretar_monto_con_dos_separadores(monto_str):
     Interpreta montos que combinan punto y coma.
     Ejemplos: '1.234,56' -> 1234.56; '1,234.56' -> 1234.56.
     """
-    ultimo_punto = monto_str.rfind(".")
+    ultimo_punto = monto_str.rfind(".")  # última aparición de cada uno
     ultima_coma = monto_str.rfind(",")
 
-    if ultimo_punto > ultima_coma:
+    if ultimo_punto > ultima_coma:  # el último marca el decimal
         # Formato anglosajón: coma para miles, punto para decimales.
         parte_entera, parte_decimal = monto_str.rsplit(".", 1)
         separador_de_miles = ","
@@ -492,13 +425,13 @@ def interpretar_monto_con_dos_separadores(monto_str):
         parte_entera, parte_decimal = monto_str.rsplit(",", 1)
         separador_de_miles = "."
 
-    if not es_parte_entera_valida(parte_entera, separador_de_miles):
+    if not es_parte_entera_valida(parte_entera, separador_de_miles):  # valida miles
         return None, "separador de miles inválido"
 
-    if not parte_decimal.isdigit():
+    if not parte_decimal.isdigit():  # decimal debe ser número
         return None, "parte decimal inválida"
 
-    valor = convertir_partes_a_numero(parte_entera, parte_decimal, separador_de_miles)
+    valor = convertir_partes_a_numero(parte_entera, parte_decimal, separador_de_miles)  # arma el float
     return valor, None
 
 
@@ -507,22 +440,22 @@ def interpretar_monto_con_un_separador(monto_str, separador):
     Interpreta montos que usan un solo tipo de separador.
     Ejemplos: '1.500' -> 1500.0; '1,5' -> 1.5; '1.234.567' -> 1234567.0.
     """
-    partes = monto_str.split(separador)
+    partes = monto_str.split(separador)  # corta por el separador
 
-    if len(partes) > 2:
+    if len(partes) > 2:  # varios separadores -> todos son miles
         # Varios separadores: todos son de miles.
         parte_entera = separador.join(partes[:-1])
         ultima_parte = partes[-1]
 
-        if not es_parte_entera_valida(parte_entera, separador):
+        if not es_parte_entera_valida(parte_entera, separador):  # valida miles
             return None, "separador de miles inválido"
 
-        if not ultima_parte.isdigit():
+        if not ultima_parte.isdigit():  # último grupo debe ser número
             return None, "separador de miles inválido"
-        if len(ultima_parte) != 3:
+        if len(ultima_parte) != 3:  # ...de 3 dígitos
             return None, "separador de miles inválido"
 
-        numero_sin_separadores = ""
+        numero_sin_separadores = ""  # pega todo sin separadores
         for parte in partes:
             numero_sin_separadores += parte
         return float(numero_sin_separadores), None
@@ -553,45 +486,36 @@ def interpretar_monto(texto):
       '1.234,56' -> (1234.56, None)
       '1.234.5'  -> (None, 'separador de miles inválido')
     """
-    monto_str = ""
+    monto_str = ""  # solo dígitos y separadores
     for caracter in texto:
         if caracter in "0123456789.,":
             monto_str += caracter
 
-    if not monto_str:
+    if not monto_str:  # sin números -> error
         return None, "no contiene dígitos"
 
-    if monto_str[0] in ".," or monto_str[-1] in ".,":
+    if monto_str[0] in ".," or monto_str[-1] in ".,":  # no puede empezar/terminar en . o ,
         return None, "separador en el extremo"
 
-    if ".." in monto_str or ",," in monto_str or ".," in monto_str or ",." in monto_str:
+    if ".." in monto_str or ",," in monto_str or ".," in monto_str or ",." in monto_str:  # dobles -> error
         return None, "separadores consecutivos"
 
-    tiene_punto = "." in monto_str
+    tiene_punto = "." in monto_str  # decide qué caso usar
     tiene_coma = "," in monto_str
 
-    if tiene_punto and tiene_coma:
+    if tiene_punto and tiene_coma:  # ej: 1.234,56
         return interpretar_monto_con_dos_separadores(monto_str)
 
-    if tiene_punto:
+    if tiene_punto:  # ej: 1.500
         return interpretar_monto_con_un_separador(monto_str, ".")
 
-    if tiene_coma:
+    if tiene_coma:  # ej: 1,5
         return interpretar_monto_con_un_separador(monto_str, ",")
 
-    if not monto_str.isdigit():
+    if not monto_str.isdigit():  # resto inválido
         return None, "caracteres inválidos"
 
-    return float(monto_str), None
-
-
-def resolver_ambiguedad(texto):
-    """
-    Devuelve el valor numérico de un monto, o None si no es válido.
-    Ejemplo: '1.500' -> 1500.0; '1,5' -> 1.5; '1.234.5' -> None.
-    """
-    valor, _ = interpretar_monto(texto)
-    return valor
+    return float(monto_str), None  # entero simple
 
 
 def buscar_multiplicador(texto):
@@ -602,10 +526,9 @@ def buscar_multiplicador(texto):
     exactas ('M', 'K', 'B'), para no confundir la 'B' de 'BRL' con un billón.
     Ejemplo: 'USD 100 millones' -> 'MILLONES'; '$1,2 M' -> 'M'.
     """
-    texto_upper = " ".join(texto.upper().split())
-    palabras_ordenadas = ordenar_por_longitud(palabras_multiplicadoras())
+    texto_upper = " ".join(texto.upper().split())  # normaliza espacios y mayúsculas
 
-    for palabra in palabras_ordenadas:
+    for palabra in MULTIPLICADORES_EN_PALABRAS:  # busca palabra larga primero
         if f" {palabra} " in f" {texto_upper} ":
             return palabra
 
@@ -622,19 +545,19 @@ def resolver_monto(texto):
     Devuelve None si el monto no se puede interpretar.
     Ejemplo: '2,5 millones de dólares' -> 2500000.0; '$1,2 M' -> 1200000.0.
     """
-    factor = 1
-    palabra_mult = buscar_multiplicador(texto)
+    factor = 1  # por defecto no multiplica
+    palabra_mult = buscar_multiplicador(texto)  # detecta MIL, MILLONES, M...
     if palabra_mult:
-        factor = FACTOR_POR_MULTIPLICADOR[palabra_mult]
-        indice = texto.upper().rfind(palabra_mult)
+        factor = FACTOR_POR_MULTIPLICADOR[palabra_mult]  # factor numérico
+        indice = texto.upper().rfind(palabra_mult)  # saca la palabra del texto
         if indice != -1:
             texto = texto[:indice] + texto[indice + len(palabra_mult):]
 
-    valor, _ = interpretar_monto(texto)
-    if valor is None:
+    valor, _ = interpretar_monto(texto)  # convierte el número puro
+    if valor is None:  # si falla, no hay monto
         return None
 
-    return valor * factor
+    return valor * factor  # aplica el multiplicador
 
 
 def reconocer_moneda(texto):
@@ -642,14 +565,13 @@ def reconocer_moneda(texto):
     Identifica la moneda presente en un texto y retorna su código estándar ISO 4217.
     Si no encuentra ninguna moneda explícita, asume ARS (moneda local por defecto).
     """
-    texto_upper = texto.upper()
-    claves_ordenadas = ordenar_por_longitud(MONEDA_POR_SIMBOLO_O_NOMBRE.keys())
+    texto_upper = texto.upper()  # compara en mayúsculas
 
-    for patron in claves_ordenadas:
+    for patron in MONEDAS_POR_LONGITUD:  # prueba lo largo primero ($U antes que $)
         if patron in texto_upper:
             return MONEDA_POR_SIMBOLO_O_NOMBRE[patron]
 
-    return "ARS"
+    return "ARS"  # defecto: moneda local
 
 
 def formatear_monto(monto, moneda):
@@ -659,16 +581,16 @@ def formatear_monto(monto, moneda):
     - USD: USD 4.500
     - Otras: CODIGO <monto>
     """
-    if float(monto).is_integer():
+    if float(monto).is_integer():  # entero: 6000000 -> 6.000.000
         num_str = f"{int(monto):,}".replace(",", ".")
-    else:
+    else:  # decimal: 1234.56 -> 1.234,56
         num_str = f"{monto:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
     
-    if moneda == "ARS":
+    if moneda == "ARS":  # local con $
         return f"${num_str}"
-    elif moneda == "USD":
+    elif moneda == "USD":  # USD con código
         return f"USD {num_str}"
-    else:
+    else:  # resto con código
         return f"{moneda} {num_str}"
 
 
@@ -678,25 +600,25 @@ def verificar_promo_pendiente(texto_bloque):
     calcularse sobre el precio exhibido (ej: 'con 15% de descuento', '10% off').
     Ignora variaciones históricas ya aplicadas ('representa un aumento del 9%').
     """
-    texto_de_busqueda = texto_bloque + " "
+    texto_de_busqueda = texto_bloque + " "  # espacio centinela para el final
 
-    for patron in (PROMOCION_APLICABLE, PROMOCION_APLICABLE_POSPUESTA):
+    for patron in (PROMOCION_APLICABLE, PROMOCION_APLICABLE_POSPUESTA):  # prueba los 2 órdenes
         match = re.search(patron, texto_de_busqueda, re.IGNORECASE)
-        if not match:
+        if not match:  # si no hay promo, sigue
             continue
 
-        match_porcentaje = re.search(EXPRESION_DE_PORCENTAJE, match.group(0), re.IGNORECASE)
+        match_porcentaje = re.search(EXPRESION_DE_PORCENTAJE, match.group(0), re.IGNORECASE)  # saca el %
         if not match_porcentaje:
             continue
 
-        porcentaje, error = interpretar_monto(match_porcentaje.group(0))
-        if porcentaje is None:
+        porcentaje, error = interpretar_monto(match_porcentaje.group(0))  # convierte % a número
+        if porcentaje is None:  # % inválido -> error
             return {
                 "error": error,
                 "texto_original": match_porcentaje.group(0)
             }
 
-        es_recargo = "RECARGO" in match.group(0).upper()
+        es_recargo = "RECARGO" in match.group(0).upper()  # recargo vs descuento
         return {
             "porcentaje": porcentaje,
             "es_recargo": es_recargo
@@ -712,8 +634,8 @@ def verificar_promo_pendiente(texto_bloque):
 def leer_archivo(ruta):
     """Lee el archivo de texto plano en UTF-8."""
     with open(ruta, 'r', encoding='utf-8') as f:
-        content = f.read()
-    return content
+        content = f.read()  # lee todo el archivo
+    return content  # devuelve el texto completo
 
 
 def extraer_texto(ruta=None):
@@ -723,55 +645,61 @@ def extraer_texto(ruta=None):
     Ejemplo: '## Sube la nafta\\nEl litro pasó de $ 1.150 a $1.234,56'.
     """
     if ruta is None:
-        ruta = CARPETA_BASE_DEL_PROGRAMA / "data.txt"
+        ruta = CARPETA_BASE_DEL_PROGRAMA / "data.txt"  # archivo por defecto
 
-    bloques_validos = []
-    bloque_actual = []
+    bloques_validos = []  # lista final de noticias
+    bloque_actual = []  # líneas del bloque en curso
 
-    for linea in leer_archivo(ruta).splitlines():
-        if linea.lstrip().startswith(MARCA_DE_INICIO_DE_NOTICIA):
-            texto_anterior = "\n".join(bloque_actual).strip()
+    for linea in leer_archivo(ruta).splitlines():  # recorre línea por línea
+        if linea.lstrip().startswith(MARCA_DE_INICIO_DE_NOTICIA):  # nuevo bloque con ##
+            texto_anterior = "\n".join(bloque_actual).strip()  # cierra el anterior
             if texto_anterior:
                 bloques_validos.append(texto_anterior)
-            contenido = linea.lstrip()[len(MARCA_DE_INICIO_DE_NOTICIA):]
-            bloque_actual = [contenido]
+            contenido = linea.lstrip()[len(MARCA_DE_INICIO_DE_NOTICIA):]  # saca el ##
+            bloque_actual = [contenido]  # empieza bloque nuevo
         else:
-            bloque_actual.append(linea)
+            bloque_actual.append(linea)  # sigue el mismo bloque
 
-    texto_final = "\n".join(bloque_actual).strip()
+    texto_final = "\n".join(bloque_actual).strip()  # cierra el último bloque
     if texto_final:
         bloques_validos.append(texto_final)
 
-    return bloques_validos
+    return bloques_validos  # devuelve todos los bloques
 
 
-def procesar_bloque_noticia(bloque, moneda_destino=None, cotizacion_manual=None):
+def detectar_montos(bloque):
     """
-    Procesa un bloque de noticia individual:
-    - Extrae el título y los montos detectados.
-    - Genera la noticia normalizada (con los precios reemplazados in-place).
-    - Aplica descuentos/aumentos pendientes si corresponden agregando 'Precio Final:'.
-    - Si se especificó --a, genera también la noticia convertida a la divisa solicitada.
+    Detecta los montos del bloque. Devuelve su parte: lista de (texto, ini, fin).
     """
-    lineas = bloque.splitlines()
-    titulo = lineas[0].strip() if lineas else "Sin título"
-
     # Encontramos todas las apariciones de montos en el bloque. Se agrega un
     # espacio centinela para que DELIMITADOR_FINAL funcione al final del texto.
     matches = list(re.finditer(EXPRESION_DE_MONTO, bloque + " ", re.IGNORECASE))
-    
-    montos_detalle = []
-    advertencias = []
-    texto_normalizado = bloque
-    texto_convertido = bloque if moneda_destino else None
+
+    # El grupo 1 es el monto; el delimitador final queda fuera del reemplazo.
+    montos = []  # lista de (texto, ini, fin)
+    for match in matches:  # recorre en orden de lectura
+        texto_capturado = match.group(1).strip()  # monto sin espacios
+        ini, fin = match.span(1)  # inicio y fin del grupo 1 (fin exclusivo)
+        montos.append((texto_capturado, ini, fin))
+
+    return montos
+
+
+def normalizar_montos(bloque, montos, moneda_destino=None, cotizacion_manual=None):
+    """
+    Normaliza y convierte los montos. Devuelve su parte del json:
+    texto normalizado, texto convertido, detalle de montos y advertencias.
+    """
+    montos_detalle = []  # lista de montos ok
+    advertencias = []  # lista de fallos
+    texto_normalizado = bloque  # copia para reemplazar
+    texto_convertido = bloque if moneda_destino else None  # copia para convertir
 
     # Procesamos los reemplazos de atrás hacia adelante para no alterar los índices de caracteres
-    for match in reversed(matches):
-        # El grupo 1 es el monto; el delimitador final queda fuera del reemplazo.
-        texto_capturado = match.group(1).strip()
-        monto_num = resolver_monto(texto_capturado)
+    for texto_capturado, ini, fin in reversed(montos):
+        monto_num = resolver_monto(texto_capturado)  # número + multiplicador
 
-        if monto_num is None:
+        if monto_num is None:  # inválido -> a advertencias, no toca el texto
             _, motivo = interpretar_monto(texto_capturado)
             advertencias.append({
                 "texto_original": texto_capturado,
@@ -779,36 +707,35 @@ def procesar_bloque_noticia(bloque, moneda_destino=None, cotizacion_manual=None)
             })
             continue
 
-        moneda_orig = reconocer_moneda(texto_capturado)
-        
+        moneda_orig = reconocer_moneda(texto_capturado)  # USD, ARS...
+
         # 1. Monto normalizado en su moneda original
         monto_norm_str = formatear_monto(monto_num, moneda_orig)
-        ini, fin = match.span(1)
         texto_normalizado = texto_normalizado[:ini] + monto_norm_str + texto_normalizado[fin:]
 
         # 2. Monto convertido si se solicitó --a
         monto_conv_num = None
         if moneda_destino:
-            if moneda_orig == moneda_destino:
+            if moneda_orig == moneda_destino:  # misma moneda, no convierte
                 monto_conv_num = monto_num
             else:
-                res_conv = convertir_moneda(monto_num, moneda_orig, moneda_destino, cotizacion_manual)
-                if res_conv and "monto_convertido" in res_conv:
+                res_conv = convertir_moneda(monto_num, moneda_orig, moneda_destino, cotizacion_manual)  # intenta convertir
+                if res_conv and "monto_convertido" in res_conv:  # ok -> usa el convertido
                     monto_conv_num = res_conv["monto_convertido"]
                 else:
-                    monto_conv_num = monto_num
+                    monto_conv_num = monto_num  # fallo -> deja el original
                     motivo = f"no se pudo convertir {moneda_orig} a {moneda_destino}"
-                    if res_conv and "error" in res_conv:
+                    if res_conv and "error" in res_conv:  # usa el detalle real
                         motivo = res_conv["error"]
                     advertencias.append({
                         "texto_original": texto_capturado,
                         "motivo": motivo
                     })
-            
+
             monto_conv_str = formatear_monto(monto_conv_num, moneda_destino)
             texto_convertido = texto_convertido[:ini] + monto_conv_str + texto_convertido[fin:]
 
-        detalle = {
+        detalle = {  # guarda el monto para el json
             "texto_original": texto_capturado,
             "monto_original": monto_num,
             "moneda_original": moneda_orig
@@ -822,45 +749,58 @@ def procesar_bloque_noticia(bloque, moneda_destino=None, cotizacion_manual=None)
     # Invertimos para que montos_detalle quede en el orden original de lectura
     montos_detalle.reverse()
 
+    return {  # devuelve su parte del json
+        "texto_normalizado": texto_normalizado,
+        "texto_convertido": texto_convertido,
+        "montos_detalle": montos_detalle,
+        "advertencias": advertencias
+    }
+
+
+def aplicar_promocion(bloque, texto_normalizado, texto_convertido, montos_detalle, advertencias, moneda_destino=None, cotizacion_manual=None):
+    """
+    Aplica descuento/recargo si hay promo. Devuelve su parte del json:
+    textos con Precio Final y advertencias actualizadas.
+    """
     # Verificamos si hay promociones o descuentos a calcular al final de la noticia
     promo = verificar_promo_pendiente(bloque)
 
-    if promo and "error" in promo:
+    if promo and "error" in promo:  # % roto -> advertencia
         advertencias.append({
             "texto_original": promo["texto_original"],
             "motivo": promo["error"]
         })
-    elif promo and promo["porcentaje"] > 100:
+    elif promo and promo["porcentaje"] > 100:  # % imposible -> advertencia
         advertencias.append({
             "texto_original": "porcentaje de la promoción",
             "motivo": "el porcentaje no puede ser mayor que 100"
         })
-    elif promo and montos_detalle:
-        p = promo["porcentaje"]
-        monto_base = montos_detalle[0]["monto_original"]
+    elif promo and montos_detalle:  # promo válida -> precio final
+        p = promo["porcentaje"]  # % a aplicar
+        monto_base = montos_detalle[0]["monto_original"]  # usa el primer monto
         moneda_base = montos_detalle[0]["moneda_original"]
 
         # Cálculo de precio final con descuento o recargo
-        if promo["es_recargo"]:
+        if promo["es_recargo"]:  # sube o baja según tipo
             final_num = monto_base * (1 + p / 100)
         else:
             final_num = monto_base * (1 - p / 100)
 
-        final_norm_str = formatear_monto(final_num, moneda_base)
+        final_norm_str = formatear_monto(final_num, moneda_base)  # texto final normal
         texto_normalizado += f" Precio Final: {final_norm_str}"
 
         # Si hay conversión, calculamos el precio final en la moneda destino
         if moneda_destino:
-            if moneda_base == moneda_destino:
+            if moneda_base == moneda_destino:  # misma moneda, no convierte
                 final_conv_num = final_num
             else:
-                res_final_conv = convertir_moneda(final_num, moneda_base, moneda_destino, cotizacion_manual)
-                if res_final_conv and "monto_convertido" in res_final_conv:
+                res_final_conv = convertir_moneda(final_num, moneda_base, moneda_destino, cotizacion_manual)  # intenta convertir
+                if res_final_conv and "monto_convertido" in res_final_conv:  # ok -> usa el convertido
                     final_conv_num = res_final_conv["monto_convertido"]
                 else:
-                    final_conv_num = final_num
+                    final_conv_num = final_num  # fallo -> deja el original
                     motivo = f"no se pudo convertir {moneda_base} a {moneda_destino}"
-                    if res_final_conv and "error" in res_final_conv:
+                    if res_final_conv and "error" in res_final_conv:  # usa el detalle real
                         motivo = res_final_conv["error"]
                     advertencias.append({
                         "texto_original": f"Precio Final: {final_norm_str}",
@@ -869,16 +809,54 @@ def procesar_bloque_noticia(bloque, moneda_destino=None, cotizacion_manual=None)
             final_conv_str = formatear_monto(final_conv_num, moneda_destino)
             texto_convertido += f" Precio Final: {final_conv_str}"
 
-    resultado = {
-        "titulo": titulo,
-        "noticia_original": bloque,
-        "noticia_normalizada": texto_normalizado,
-        "montos_detalle": montos_detalle,
+    return {  # devuelve su parte del json
+        "texto_normalizado": texto_normalizado,
+        "texto_convertido": texto_convertido,
         "advertencias": advertencias
     }
 
-    if moneda_destino:
-        resultado["noticia_convertida"] = texto_convertido
+
+def procesar_bloque_noticia(bloque, moneda_destino=None, cotizacion_manual=None):
+    """
+    Procesa un bloque de noticia individual:
+    - Extrae el título y los montos detectados.
+    - Genera la noticia normalizada (con los precios reemplazados in-place).
+    - Aplica descuentos/aumentos pendientes si corresponden agregando 'Precio Final:'.
+    - Si se especificó --a, genera también la noticia convertida a la divisa solicitada.
+    """
+    lineas = bloque.splitlines()
+    titulo = lineas[0].strip() if lineas else "Sin título"  # primera línea
+
+    montos = detectar_montos(bloque)  
+
+    normalizados = normalizar_montos(bloque, montos, moneda_destino, cotizacion_manual)  # 2. normaliza y convierte
+
+    if not normalizados["montos_detalle"]:  # sin montos -> advierte
+        normalizados["advertencias"].append({
+            "texto_original": titulo,
+            "motivo": "no se detectaron montos"
+        })
+
+    con_promo = aplicar_promocion(  # 3. aplica promo y precio final
+        bloque,
+        normalizados["texto_normalizado"],
+        normalizados["texto_convertido"],
+        normalizados["montos_detalle"],
+        normalizados["advertencias"],
+        moneda_destino,
+        cotizacion_manual
+    )
+
+    resultado = {  
+        "titulo": titulo,
+        "noticia_original": bloque,
+        "noticia_normalizada": con_promo["texto_normalizado"],
+        "montos_detalle": normalizados["montos_detalle"],
+        "advertencias": con_promo["advertencias"]
+    }
+
+    if moneda_destino:  # agrega convertida solo si se pidió --a
+        resultado["noticia_convertida"] = con_promo["texto_convertido"]
 
     return resultado
 
@@ -891,33 +869,21 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Trabajo Práctico Integrador - FTI: Tema 10 (Precios y montos de dinero)."
     )
-    ####
-    #argumentos
-    ####
-    #archivo. opcional
+
     parser.add_argument("archivo",nargs="?",default=None,help="Archivo de noticias a procesar (por defecto usa data.txt en la carpeta del script).")
-
-    # 
     parser.add_argument("--ruta",type=str,default=None,help="Ruta alternativa al archivo de texto.")
-
-    # moneda destino
     parser.add_argument("--a",type=str,choices=list(CODIGOS_ISO_4217_SOPORTADOS.keys()),help="Moneda a la que se desea convertir los montos (ej: ARS, USD, EUR, CLP, etc.).")
-
-    # cotizacion manual. opcional
     parser.add_argument("--cotizacion",type=float,help="Cotización manual para la conversión.")
-    
     # por si no se quiere todo el json
     parser.add_argument("--solo-texto",action="store_true",help="Muestra únicamente las noticias procesadas con formato de texto plano.")
-
-    args = parser.parse_args()
-
-    # Prioridad: archivo posicional > flag --ruta > data.txt local
+    args = parser.parse_args()  # lee CLI
     ruta_elegida = args.archivo or args.ruta or (CARPETA_BASE_DEL_PROGRAMA / "data.txt")
 
-    bloques = extraer_texto(ruta_elegida)
+
+    bloques = extraer_texto(ruta_elegida)  # parte data.txt en bloques ##
     noticias_procesadas = []
 
-    for bloque in bloques:
+    for bloque in bloques:  # procesa bloque por bloque
         resultado_bloque = procesar_bloque_noticia(
             bloque,
             moneda_destino=args.a,
@@ -925,22 +891,24 @@ if __name__ == "__main__":
         )
         noticias_procesadas.append(resultado_bloque)
 
-    if crear_html:
+    if crear_html:  # genera gaceta.html si está el módulo
         crear_html(noticias_procesadas, CARPETA_BASE_DEL_PROGRAMA / "gaceta.html", moneda_destino=args.a)
 
 
     # Salida por consola
-    if args.solo_texto:
+    if args.solo_texto:  # modo texto plano
         for n in noticias_procesadas:
-            texto_a_mostrar = n.get("noticia_convertida") or n["noticia_normalizada"]
+            texto_a_mostrar = n.get("noticia_convertida") or n["noticia_normalizada"]  # convertido si hay
             print(f"## {n['titulo']}\n{texto_a_mostrar}\n")
 
-            if n["advertencias"]:
+            if n["advertencias"]:  # lista advertencias del bloque
                 print("Advertencias:")
                 for advertencia in n["advertencias"]:
                     print(f"- {advertencia['texto_original']}: {advertencia['motivo']}")
-                print()
 
             print("---" * 40 + "\n")
-    else:
-        print(json.dumps(noticias_procesadas, indent=4, ensure_ascii=False))
+    else:  # modo JSON, un bloque por vez
+        for indice, noticia in enumerate(noticias_procesadas, start=1):
+            print(json.dumps(noticia, indent=4, ensure_ascii=False))
+            if indice < len(noticias_procesadas):
+                print("-" * 80)  # separa bloques en modo JSON
