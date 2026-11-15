@@ -165,24 +165,6 @@ NOMBRE_DE_MONEDA_COLOQUIAL = r"(PESOS ARGENTINOS|PESOS URUGUAYOS|PESO ARGENTINO|
 CONECTOR_DE = r"(DE" + ESPACIOS_OPCIONALES + r"|)"
 
 
-# --- Porcentajes --------------------------------------------------------------
-
-# Número de porcentaje, entero o con una parte decimal.
-# Ejemplos: "15", "7,4", "0.09".
-NUMERO_DE_PORCENTAJE = (
-    SECUENCIA_DE_DIGITOS +
-    r"(" + SEPARADOR_DE_MILES_O_DECIMALES + SECUENCIA_DE_DIGITOS + r"|)"
-)
-
-# Símbolo o palabra que indica porcentaje. Ejemplos: "%", "por ciento".
-SIGNO_DE_PORCENTAJE = r"(%|POR CIENTO|PORCIENTO)"
-
-# Porcentaje completo. Ejemplos: "15 %", "7,4%", "20 por ciento".
-EXPRESION_DE_PORCENTAJE = (
-    r"(" + NUMERO_DE_PORCENTAJE + ESPACIOS_OPCIONALES + SIGNO_DE_PORCENTAJE + r")"
-)
-
-
 # ==============================================================================
 # ESTRUCTURAS SINTÁCTICAS DE DINERO
 # Se definen sin DELIMITADOR_FINAL; se agrega una sola vez en EXPRESION_DE_MONTO.
@@ -265,31 +247,6 @@ EXPRESION_DE_MONTO = (
         MONTO_CON_MULTIPLICADOR,
     ]) +
     r")" + DELIMITADOR_FINAL
-)
-
-
-# estadísticas ya aplicadas ("subió 7,4 %").
-PROMOCION_APLICABLE = (
-    r"(" +
-    r"(CON" + ESPACIOS_OPCIONALES + r"|)" +
-    EXPRESION_DE_PORCENTAJE +
-    ESPACIOS_OPCIONALES +
-    r"(DE" + ESPACIOS_OPCIONALES + r"|)" +
-    r"(DESCUENTO|OFF|REBAJA|MENOS|RECARGO)" +
-    DELIMITADOR_FINAL +
-    r")"
-)
-
-# Promoción con la palabra clave antes del porcentaje.
-# Ejemplos: "descuento del 15%", "rebaja de 20 por ciento".
-PROMOCION_APLICABLE_POSPUESTA = (
-    r"(" +
-    r"(DESCUENTO|OFF|REBAJA|MENOS|RECARGO)" +
-    ESPACIOS_OPCIONALES +
-    r"((DEL|DE)" + ESPACIOS_OPCIONALES + r"|)" +
-    EXPRESION_DE_PORCENTAJE +
-    DELIMITADOR_FINAL +
-    r")"
 )
 
 
@@ -594,39 +551,6 @@ def formatear_monto(monto, moneda):
         return f"{moneda} {num_str}"
 
 
-def verificar_promo_pendiente(texto_bloque):
-    """
-    Busca si en el texto de la noticia hay una promoción o descuento activo que deba
-    calcularse sobre el precio exhibido (ej: 'con 15% de descuento', '10% off').
-    Ignora variaciones históricas ya aplicadas ('representa un aumento del 9%').
-    """
-    texto_de_busqueda = texto_bloque + " "  # espacio centinela para el final
-
-    for patron in (PROMOCION_APLICABLE, PROMOCION_APLICABLE_POSPUESTA):  # prueba los 2 órdenes
-        match = re.search(patron, texto_de_busqueda, re.IGNORECASE)
-        if not match:  # si no hay promo, sigue
-            continue
-
-        match_porcentaje = re.search(EXPRESION_DE_PORCENTAJE, match.group(0), re.IGNORECASE)  # saca el %
-        if not match_porcentaje:
-            continue
-
-        porcentaje, error = interpretar_monto(match_porcentaje.group(0))  # convierte % a número
-        if porcentaje is None:  # % inválido -> error
-            return {
-                "error": error,
-                "texto_original": match_porcentaje.group(0)
-            }
-
-        es_recargo = "RECARGO" in match.group(0).upper()  # recargo vs descuento
-        return {
-            "porcentaje": porcentaje,
-            "es_recargo": es_recargo
-        }
-
-    return None
-
-
 # ==============================================================================
 # LECTURA Y PROCESAMIENTO DE NOTICIAS
 # ==============================================================================
@@ -757,77 +681,17 @@ def normalizar_montos(bloque, montos, moneda_destino=None, cotizacion_manual=Non
     }
 
 
-def aplicar_promocion(bloque, texto_normalizado, texto_convertido, montos_detalle, advertencias, moneda_destino=None, cotizacion_manual=None):
-    """
-    Aplica descuento/recargo si hay promo. Devuelve su parte del json:
-    textos con Precio Final y advertencias actualizadas.
-    """
-    # Verificamos si hay promociones o descuentos a calcular al final de la noticia
-    promo = verificar_promo_pendiente(bloque)
-
-    if promo and "error" in promo:  # % roto -> advertencia
-        advertencias.append({
-            "texto_original": promo["texto_original"],
-            "motivo": promo["error"]
-        })
-    elif promo and promo["porcentaje"] > 100:  # % imposible -> advertencia
-        advertencias.append({
-            "texto_original": "porcentaje de la promoción",
-            "motivo": "el porcentaje no puede ser mayor que 100"
-        })
-    elif promo and montos_detalle:  # promo válida -> precio final
-        p = promo["porcentaje"]  # % a aplicar
-        monto_base = montos_detalle[0]["monto_original"]  # usa el primer monto
-        moneda_base = montos_detalle[0]["moneda_original"]
-
-        # Cálculo de precio final con descuento o recargo
-        if promo["es_recargo"]:  # sube o baja según tipo
-            final_num = monto_base * (1 + p / 100)
-        else:
-            final_num = monto_base * (1 - p / 100)
-
-        final_norm_str = formatear_monto(final_num, moneda_base)  # texto final normal
-        texto_normalizado += f" Precio Final: {final_norm_str}"
-
-        # Si hay conversión, calculamos el precio final en la moneda destino
-        if moneda_destino:
-            if moneda_base == moneda_destino:  # misma moneda, no convierte
-                final_conv_num = final_num
-            else:
-                res_final_conv = convertir_moneda(final_num, moneda_base, moneda_destino, cotizacion_manual)  # intenta convertir
-                if res_final_conv and "monto_convertido" in res_final_conv:  # ok -> usa el convertido
-                    final_conv_num = res_final_conv["monto_convertido"]
-                else:
-                    final_conv_num = final_num  # fallo -> deja el original
-                    motivo = f"no se pudo convertir {moneda_base} a {moneda_destino}"
-                    if res_final_conv and "error" in res_final_conv:  # usa el detalle real
-                        motivo = res_final_conv["error"]
-                    advertencias.append({
-                        "texto_original": f"Precio Final: {final_norm_str}",
-                        "motivo": motivo
-                    })
-            final_conv_str = formatear_monto(final_conv_num, moneda_destino)
-            texto_convertido += f" Precio Final: {final_conv_str}"
-
-    return {  # devuelve su parte del json
-        "texto_normalizado": texto_normalizado,
-        "texto_convertido": texto_convertido,
-        "advertencias": advertencias
-    }
-
-
 def procesar_bloque_noticia(bloque, moneda_destino=None, cotizacion_manual=None):
     """
     Procesa un bloque de noticia individual:
     - Extrae el título y los montos detectados.
     - Genera la noticia normalizada (con los precios reemplazados in-place).
-    - Aplica descuentos/aumentos pendientes si corresponden agregando 'Precio Final:'.
     - Si se especificó --a, genera también la noticia convertida a la divisa solicitada.
     """
     lineas = bloque.splitlines()
     titulo = lineas[0].strip() if lineas else "Sin título"  # primera línea
 
-    montos = detectar_montos(bloque)  
+    montos = detectar_montos(bloque)  # 1. detecta montos
 
     normalizados = normalizar_montos(bloque, montos, moneda_destino, cotizacion_manual)  # 2. normaliza y convierte
 
@@ -837,26 +701,16 @@ def procesar_bloque_noticia(bloque, moneda_destino=None, cotizacion_manual=None)
             "motivo": "no se detectaron montos"
         })
 
-    con_promo = aplicar_promocion(  # 3. aplica promo y precio final
-        bloque,
-        normalizados["texto_normalizado"],
-        normalizados["texto_convertido"],
-        normalizados["montos_detalle"],
-        normalizados["advertencias"],
-        moneda_destino,
-        cotizacion_manual
-    )
-
-    resultado = {  
+    resultado = {  # 3. arma el dict final
         "titulo": titulo,
         "noticia_original": bloque,
-        "noticia_normalizada": con_promo["texto_normalizado"],
+        "noticia_normalizada": normalizados["texto_normalizado"],
         "montos_detalle": normalizados["montos_detalle"],
-        "advertencias": con_promo["advertencias"]
+        "advertencias": normalizados["advertencias"]
     }
 
     if moneda_destino:  # agrega convertida solo si se pidió --a
-        resultado["noticia_convertida"] = con_promo["texto_convertido"]
+        resultado["noticia_convertida"] = normalizados["texto_convertido"]
 
     return resultado
 
