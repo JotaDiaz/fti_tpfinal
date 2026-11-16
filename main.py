@@ -231,7 +231,14 @@ MONTO_CON_MULTIPLICADOR = (
     r"(" + MONTO_NUMERICO + ESPACIOS_OPCIONALES + MULTIPLICADOR_EN_PALABRAS + r")"
 )
 
-# Ejemplos: "$ 1.150", "u$s 4.500", "2,5 millones de dólares", "$1,2 M".
+# Monto con abreviatura de multiplicador sin moneda explícita.
+# La abreviatura se exige en mayúscula para no confundir "1,2 M" (millones)
+# con "400 m2" o "5 m" (metros). Ejemplo: "1,2 M".
+MONTO_CON_MULTIPLICADOR_ABREVIADO_SUELTO = (
+    r"(" + MONTO_NUMERICO + ESPACIOS_OPCIONALES + r"(?-i:(M|K|B)))"
+)
+
+# Ejemplos: "$ 1.150", "u$s 4.500", "2,5 millones de dólares", "$1,2 M", "1,2 M".
 EXPRESION_DE_MONTO = (
     r"(" +
     "|".join([
@@ -245,6 +252,7 @@ EXPRESION_DE_MONTO = (
         MONTO_CON_SIMBOLO_ANTEPUESTO,
         MONTO_CON_NOMBRE_DE_MONEDA,
         MONTO_CON_MULTIPLICADOR,
+        MONTO_CON_MULTIPLICADOR_ABREVIADO_SUELTO,
     ]) +
     r")" + DELIMITADOR_FINAL
 )
@@ -374,11 +382,11 @@ def interpretar_monto_con_dos_separadores(monto_str):
     ultima_coma = monto_str.rfind(",")
 
     if ultimo_punto > ultima_coma:  # el último marca el decimal
-        # Formato anglosajón: coma para miles, punto para decimales.
+        # coma para miles, punto para decimales.
         parte_entera, parte_decimal = monto_str.rsplit(".", 1)
         separador_de_miles = ","
     else:
-        # Formato latino: punto para miles, coma para decimales.
+        # punto para miles, coma para decimales.
         parte_entera, parte_decimal = monto_str.rsplit(",", 1)
         separador_de_miles = "."
 
@@ -472,7 +480,7 @@ def interpretar_monto(texto):
     if not monto_str.isdigit():  # resto inválido
         return None, "caracteres inválidos"
 
-    return float(monto_str), None  # entero simple
+    return float(monto_str), None
 
 
 def buscar_multiplicador(texto):
@@ -485,7 +493,7 @@ def buscar_multiplicador(texto):
     """
     texto_upper = " ".join(texto.upper().split())  # normaliza espacios y mayúsculas
 
-    for palabra in MULTIPLICADORES_EN_PALABRAS:  # busca palabra larga primero
+    for palabra in MULTIPLICADORES_EN_PALABRAS:  
         if f" {palabra} " in f" {texto_upper} ":
             return palabra
 
@@ -599,7 +607,6 @@ def detectar_montos(bloque):
     # espacio centinela para que DELIMITADOR_FINAL funcione al final del texto.
     matches = list(re.finditer(EXPRESION_DE_MONTO, bloque + " ", re.IGNORECASE))
 
-    # El grupo 1 es el monto; el delimitador final queda fuera del reemplazo.
     montos = []  # lista de (texto, ini, fin)
     for match in matches:  # recorre en orden de lectura
         texto_capturado = match.group(1).strip()  # monto sin espacios
@@ -613,41 +620,48 @@ def normalizar_montos(bloque, montos, moneda_destino=None, cotizacion_manual=Non
     """
     Normaliza y convierte los montos. Devuelve su parte del json:
     texto normalizado, texto convertido, detalle de montos y advertencias.
+
+    Recibe el bloque completo y la lista de montos que ya detectó detectar_montos.
+    No detecta: reemplaza los montos válidos y junta los motivos de los inválidos.
     """
-    montos_detalle = []  # lista de montos ok
-    advertencias = []  # lista de fallos
-    texto_normalizado = bloque  # copia para reemplazar
-    texto_convertido = bloque if moneda_destino else None  # copia para convertir
+    montos_detalle = []  # un dict por cada monto válido, en orden de lectura
+    advertencias = []  # un dict por cada monto inválido o conversión fallida
+    texto_normalizado = bloque  # copia donde se reemplazan los montos originales
+    texto_convertido = bloque if moneda_destino else None  # copia para --a (None sin --a)
 
-    # Procesamos los reemplazos de atrás hacia adelante para no alterar los índices de caracteres
+    # ini y fin son posiciones del bloque ORIGINAL.
+    # Si reemplazáramos de izquierda a derecha y el monto nuevo tuviera otro largo,
+    # los índices de los montos siguientes quedarían corridos. 
     for texto_capturado, ini, fin in reversed(montos):
-        monto_num = resolver_monto(texto_capturado)  # número + multiplicador
+        monto_num = resolver_monto(texto_capturado)  # valor final, ya con multiplicador
 
-        if monto_num is None:  # inválido -> a advertencias, no toca el texto
-            _, motivo = interpretar_monto(texto_capturado)
+        if monto_num is None:  # monto inválido: no se reemplaza, solo se avisa
+            _, motivo = interpretar_monto(texto_capturado)  # se descarta el valor (None)
             advertencias.append({
                 "texto_original": texto_capturado,
                 "motivo": motivo
             })
-            continue
+            continue  # el texto original queda intacto
 
-        moneda_orig = reconocer_moneda(texto_capturado)  # USD, ARS...
+        moneda_orig = reconocer_moneda(texto_capturado)  # código ISO del monto
 
-        # 1. Monto normalizado en su moneda original
+        # 1. Reemplaza el monto por su versión normalizada en la moneda original.
+        #    Ejemplo: "$ 5,4 millones" -> "$5.400.000".
         monto_norm_str = formatear_monto(monto_num, moneda_orig)
         texto_normalizado = texto_normalizado[:ini] + monto_norm_str + texto_normalizado[fin:]
 
-        # 2. Monto convertido si se solicitó --a
-        monto_conv_num = None
+        # 2. Si se pidió --a, calcula y reemplaza la versión convertida.
+        monto_conv_num = None  # solo se usa cuando hay moneda destino
         if moneda_destino:
-            if moneda_orig == moneda_destino:  # misma moneda, no convierte
+            if moneda_orig == moneda_destino:  # ya está en la moneda pedida
                 monto_conv_num = monto_num
             else:
                 res_conv = convertir_moneda(monto_num, moneda_orig, moneda_destino, cotizacion_manual)  # intenta convertir
-                if res_conv and "monto_convertido" in res_conv:  # ok -> usa el convertido
+                if res_conv and "monto_convertido" in res_conv:  # conversión exitosa
                     monto_conv_num = res_conv["monto_convertido"]
                 else:
-                    monto_conv_num = monto_num  # fallo -> deja el original
+                    # Sin cotización: conserva el número original y avisa.
+                    monto_conv_num = monto_num
                     motivo = f"no se pudo convertir {moneda_orig} a {moneda_destino}"
                     if res_conv and "error" in res_conv:  # usa el detalle real
                         motivo = res_conv["error"]
@@ -656,24 +670,26 @@ def normalizar_montos(bloque, montos, moneda_destino=None, cotizacion_manual=Non
                         "motivo": motivo
                     })
 
+            # Mismos ini/fin: lo que ya se reemplazó en texto_convertido está a la derecha.
             monto_conv_str = formatear_monto(monto_conv_num, moneda_destino)
             texto_convertido = texto_convertido[:ini] + monto_conv_str + texto_convertido[fin:]
 
-        detalle = {  # guarda el monto para el json
+        # 3. Guarda el detalle del monto para el JSON de salida.
+        detalle = {  # un dict por monto en montos_detalle
             "texto_original": texto_capturado,
             "monto_original": monto_num,
             "moneda_original": moneda_orig
         }
-        if moneda_destino:
+        if moneda_destino:  # datos extra solo si hubo conversión
             detalle["monto_convertido"] = monto_conv_num
             detalle["moneda_destino"] = moneda_destino
 
         montos_detalle.append(detalle)
 
-    # Invertimos para que montos_detalle quede en el orden original de lectura
+    # Se procesó al revés, así que la lista quedó invertida: se restaura el orden.
     montos_detalle.reverse()
 
-    return {  # devuelve su parte del json
+    return {  # estas claves se copian tal cual al JSON de la noticia
         "texto_normalizado": texto_normalizado,
         "texto_convertido": texto_convertido,
         "montos_detalle": montos_detalle,
@@ -685,17 +701,19 @@ def procesar_bloque_noticia(bloque, moneda_destino=None, cotizacion_manual=None)
     """
     Procesa un bloque de noticia individual:
     - Extrae el título y los montos detectados.
-    - Genera la noticia normalizada (con los precios reemplazados in-place).
+    - Genera la noticia normalizada 
     - Si se especificó --a, genera también la noticia convertida a la divisa solicitada.
     """
     lineas = bloque.splitlines()
     titulo = lineas[0].strip() if lineas else "Sin título"  # primera línea
 
+    bloque = " ".join(bloque.split())
+
     montos = detectar_montos(bloque)  # 1. detecta montos
 
     normalizados = normalizar_montos(bloque, montos, moneda_destino, cotizacion_manual)  # 2. normaliza y convierte
 
-    if not normalizados["montos_detalle"]:  # sin montos -> advierte
+    if not normalizados["montos_detalle"]:  # no quedó ningún monto válido -> advierte
         normalizados["advertencias"].append({
             "texto_original": titulo,
             "motivo": "no se detectaron montos"
@@ -761,7 +779,7 @@ if __name__ == "__main__":
                     print(f"- {advertencia['texto_original']}: {advertencia['motivo']}")
 
             print("---" * 40 + "\n")
-    else:  # modo JSON, un bloque por vez
+    else:  
         for indice, noticia in enumerate(noticias_procesadas, start=1):
             print(json.dumps(noticia, indent=4, ensure_ascii=False))
             if indice < len(noticias_procesadas):

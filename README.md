@@ -58,12 +58,14 @@ python3 main.py --ruta noticias.txt
 
 Por defecto se imprime un JSON con el título, el texto original, el texto normalizado, los montos detectados y las advertencias. Si se usa `--a`, se agrega el monto convertido y la moneda de destino.
 
+Los textos de `noticia_original`, `noticia_normalizada` y `noticia_convertida` se emiten en una sola línea: los saltos de línea del bloque de entrada se colapsan a un espacio.
+
 Ejemplo de salida (fragmento):
 
 ```json
 {
     "titulo": "Vendo auto",
-    "noticia_normalizada": "Vendo auto\nFiat Uno 2010, USD 4.500 o $5.400.000. Acepto permuta.",
+    "noticia_normalizada": "Vendo auto Fiat Uno 2010, USD 4.500 o $5.400.000. Acepto permuta.",
     "montos_detalle": [
         {
             "texto_original": "u$s 4.500",
